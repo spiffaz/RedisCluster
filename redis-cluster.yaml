@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    port 6379
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    appendonly yes
+    # requirepass YOUR_REDIS_PASSWORD
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+spec:
+  selector:
+    app: redis-cluster
+  ports:
+    - port: 6379
+      targetPort: 6379
+  clusterIP: None
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster # The name of the StatefulSet resource
+spec:
+  # appGroup: nginx-test
+  serviceName: "redis-cluster" # The name of the headless Service for DNS-based service discovery
+  replicas: 3 # The desired number of replicas (instances) for the Redis cluster
+  selector:
+    matchLabels:
+      app: redis-cluster # The label selector to identify the Pods managed by this StatefulSet
+  template:
+    metadata:
+      labels:
+        app: redis-cluster # The labels applied to the Pods created from this template
+    spec:
+      containers:
+        - name: redis # The name of the Redis container
+          image: redis:7.0.10-alpine  # The Docker image to use for the Redis container
+          command: ["redis-server"]
+          args: ["/etc/redis/redis.conf"]
+          imagePullPolicy: Always # The policy for pulling the Redis image (Always means pull on every deployment)
+          ports:
+            - containerPort: 6379 # The port on which Redis listens for connections
+          volumeMounts:
+            - name: redis-data # The name of the PersistentVolumeClaim (PVC) to mount for Redis data
+              mountPath: /data # The mount path within the container where the PVC will be mounted
+            - name: redis-config
+              mountPath: /etc/redis/
+      volumes:
+        - name: redis-config
+          configMap:
+            name: redis-config
+        - name: config
+          configMap:
+            name: redis-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data # The name of the PersistentVolumeClaim (PVC) template
+      spec:
+        accessModes: [ "ReadWriteOnce" ] # The access mode for the PVC (ReadWriteOnce allows single-node read-write access)
+        resources:
+          requests:
+            storage: 30Mi # The requested storage size for each Redis replica
+
+
+
