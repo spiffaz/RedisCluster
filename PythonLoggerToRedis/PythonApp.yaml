@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: python-redis-config
+data:
+  log_to_redis.py: |
+    import redis
+    import time
+    import os
+
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+
+    def main():
+        client = redis.Redis(host=redis_host, port=6379, db=0)
+
+        while True:
+            log_message = "Logging something to Redis at " + time.strftime("%Y-%m-%d %H:%M:%S")
+            client.rpush("log_messages", log_message)
+            print(f"Logged: {log_message}")
+            time.sleep(60)
+
+    if __name__ == "__main__":
+        main()
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-redis-logger-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: python-redis-logger
+  template:
+    metadata:
+      labels:
+        app: python-redis-logger
+    spec:
+      containers:
+        - name: python-redis-logger
+          image: python:3.9-slim
+          command: ["python", "/app/log_to_redis.py"]
+          env:
+            - name: REDIS_HOST
+              value: redis-cluster-service  # Replace with the name of your Redis service
+          volumeMounts:
+            - name: script-volume
+              mountPath: /app
+      volumes:
+        - name: script-volume
+          configMap:
+            name: python-redis-config
